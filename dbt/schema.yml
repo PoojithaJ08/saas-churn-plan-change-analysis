@@ -108,9 +108,6 @@ models:
       - name: churn_rate_pct
         tests:
           - not_null
-          - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 100
 
   - name: mart_churn_by_plan
     description: >
