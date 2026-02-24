@@ -1,0 +1,43 @@
+version: 2
+
+sources:
+  - name: public
+    schema: public
+    tables:
+      - name: accounts
+        columns:
+          - name: account_id
+            tests:
+              - unique
+              - not_null
+          - name: company_name
+            tests:
+              - not_null
+
+      - name: subscriptions
+        columns:
+          - name: subscription_id
+            tests:
+              - unique
+              - not_null
+          - name: account_id
+            tests:
+              - not_null
+          - name: plan_id
+            tests:
+              - not_null
+          - name: status
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['active', 'cancelled', 'paused']
+          - name: started_at
+            tests:
+              - not_null
+
+      - name: plans
+        columns:
+          - name: plan_id
+            tests:
+              - unique
+              - not_null

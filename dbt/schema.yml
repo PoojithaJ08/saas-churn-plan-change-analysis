@@ -1,54 +1,11 @@
 version: 2
 
-sources:
-  - name: public
-    schema: public
-    tables:
-      - name: accounts
-        columns:
-          - name: account_id
-            tests:
-              - unique
-              - not_null
-          - name: company_name
-            tests:
-              - not_null
+# Source definitions moved to models/sources.yml
+# This file contains model-level tests only
 
-      - name: subscriptions
-        columns:
-          - name: subscription_id
-            tests:
-              - unique
-              - not_null
-          - name: account_id
-            tests:
-              - not_null
-          - name: plan_id
-            tests:
-              - not_null
-          - name: status
-            tests:
-              - not_null
-              - accepted_values:
-                  values: ['active', 'cancelled', 'paused']
-          - name: started_at
-            tests:
-              - not_null
-
-      - name: plans
-        columns:
-          - name: plan_id
-            tests:
-              - unique
-              - not_null
-
-# ─────────────────────────────────────────
-# Staging models
-# ─────────────────────────────────────────
 models:
   - name: stg_accounts
-    description: >
-      Cleaned accounts table. TEST and DEMO company names excluded.
+    description: Cleaned accounts — TEST and DEMO excluded.
     columns:
       - name: account_id
         tests:
@@ -58,8 +15,7 @@ models:
   - name: stg_subscriptions
     description: >
       Cleaned subscriptions joined to stg_accounts.
-      Adds is_plan_change_end flag: TRUE when cancellation is immediately
-      followed by a new subscription for the same account.
+      Adds is_plan_change_end flag.
     columns:
       - name: subscription_id
         tests:
@@ -93,13 +49,8 @@ models:
           - accepted_values:
               values: ['monthly', 'annual']
 
-# ─────────────────────────────────────────
-# Mart models
-# ─────────────────────────────────────────
   - name: mart_monthly_churn
-    description: >
-      Monthly churn rate trend — rolling 12 months.
-      One row per calendar month.
+    description: Monthly churn rate — rolling 12 months.
     columns:
       - name: cohort_month
         tests:
@@ -110,9 +61,7 @@ models:
           - not_null
 
   - name: mart_churn_by_plan
-    description: >
-      Churn rate by plan tier and billing cycle — rolling 6 months.
-      One row per month × plan_name × billing_cycle.
+    description: Churn by plan tier + billing cycle — rolling 6 months.
     columns:
       - name: logo_churn_rate_pct
         tests:
@@ -122,8 +71,7 @@ models:
           - not_null
 
   - name: mart_first_vs_rechurn
-    description: >
-      First-churn vs. re-churn segmentation — rolling 12 months.
+    description: First-churn vs re-churn — rolling 12 months.
     columns:
       - name: churn_type
         tests:
@@ -133,6 +81,4 @@ models:
               values: ['first_churn', 're_churn']
 
   - name: mart_subscription_overlaps
-    description: >
-      Data quality: pairs of subscriptions for the same account
-      with overlapping active date ranges. Should ideally be empty.
+    description: Data quality — overlapping subscription pairs.
