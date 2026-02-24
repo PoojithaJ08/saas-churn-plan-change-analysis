@@ -1,4 +1,4 @@
-.PHONY: up down reset run test docs nb help
+.PHONY: up down reset run test docs nb dashboard psql validate help
 
 # ─────────────────────────────────────────
 # Docker
@@ -32,8 +32,11 @@ docs:      ## Generate and serve dbt docs (opens browser)
 	cd dbt && dbt docs generate && dbt docs serve
 
 # ─────────────────────────────────────────
-# Notebook
+# Dashboard & Notebook
 # ─────────────────────────────────────────
+
+dashboard: ## Launch Streamlit dashboard at http://localhost:8501
+	streamlit run dashboard/app.py
 
 nb:        ## Launch Jupyter notebook
 	jupyter notebook notebooks/churn_analysis.ipynb
