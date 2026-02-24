@@ -1,0 +1,141 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: public
+    tables:
+      - name: accounts
+        columns:
+          - name: account_id
+            tests:
+              - unique
+              - not_null
+          - name: company_name
+            tests:
+              - not_null
+
+      - name: subscriptions
+        columns:
+          - name: subscription_id
+            tests:
+              - unique
+              - not_null
+          - name: account_id
+            tests:
+              - not_null
+          - name: plan_id
+            tests:
+              - not_null
+          - name: status
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['active', 'cancelled', 'paused']
+          - name: started_at
+            tests:
+              - not_null
+
+      - name: plans
+        columns:
+          - name: plan_id
+            tests:
+              - unique
+              - not_null
+
+# ─────────────────────────────────────────
+# Staging models
+# ─────────────────────────────────────────
+models:
+  - name: stg_accounts
+    description: >
+      Cleaned accounts table. TEST and DEMO company names excluded.
+    columns:
+      - name: account_id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_subscriptions
+    description: >
+      Cleaned subscriptions joined to stg_accounts.
+      Adds is_plan_change_end flag: TRUE when cancellation is immediately
+      followed by a new subscription for the same account.
+    columns:
+      - name: subscription_id
+        tests:
+          - unique
+          - not_null
+      - name: account_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_accounts')
+              field: account_id
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['active', 'cancelled', 'paused']
+      - name: is_plan_change_end
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: stg_plans
+    description: Plan reference data.
+    columns:
+      - name: plan_id
+        tests:
+          - unique
+          - not_null
+      - name: billing_cycle
+        tests:
+          - accepted_values:
+              values: ['monthly', 'annual']
+
+# ─────────────────────────────────────────
+# Mart models
+# ─────────────────────────────────────────
+  - name: mart_monthly_churn
+    description: >
+      Monthly churn rate trend — rolling 12 months.
+      One row per calendar month.
+    columns:
+      - name: cohort_month
+        tests:
+          - unique
+          - not_null
+      - name: churn_rate_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: mart_churn_by_plan
+    description: >
+      Churn rate by plan tier and billing cycle — rolling 6 months.
+      One row per month × plan_name × billing_cycle.
+    columns:
+      - name: logo_churn_rate_pct
+        tests:
+          - not_null
+      - name: mrr_churn_rate_pct
+        tests:
+          - not_null
+
+  - name: mart_first_vs_rechurn
+    description: >
+      First-churn vs. re-churn segmentation — rolling 12 months.
+    columns:
+      - name: churn_type
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: ['first_churn', 're_churn']
+
+  - name: mart_subscription_overlaps
+    description: >
+      Data quality: pairs of subscriptions for the same account
+      with overlapping active date ranges. Should ideally be empty.
