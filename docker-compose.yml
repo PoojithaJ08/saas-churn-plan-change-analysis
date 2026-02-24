@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+
+  # ─────────────────────────────────────────
+  # Postgres — the main database
+  # ─────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: churn_db
+    environment:
+      POSTGRES_DB:       churn_analytics
+      POSTGRES_USER:     churn_user
+      POSTGRES_PASSWORD: churn_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data          # persist data across restarts
+      - ./docker/init:/docker-entrypoint-initdb.d       # auto-runs SQL on first start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U churn_user -d churn_analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # pgAdmin — browser-based DB UI (optional)
+  # Access at http://localhost:5050
+  # Login: admin@churn.local / admin
+  # ─────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: churn_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    admin@churn.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin_servers.json:/pgadmin4/servers.json  # auto-registers the DB
+
+volumes:
+  postgres_data:
+  pgadmin_data:

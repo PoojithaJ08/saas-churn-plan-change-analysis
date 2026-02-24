@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Churn Analytics",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "churn_analytics",
+      "Username": "churn_user",
+      "SSLMode": "prefer"
+    }
+  }
+}
