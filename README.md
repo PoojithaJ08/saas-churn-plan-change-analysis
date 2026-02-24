@@ -1,5 +1,7 @@
 # saas-churn-plan-change-analysis
 
+[![dbt CI](https://github.com/PoojithaJ08/saas-churn-plan-change-analysis/actions/workflows/dbt_ci.yml/badge.svg)](https://github.com/PoojithaJ08/saas-churn-plan-change-analysis/actions/workflows/dbt_ci.yml)
+
 Subscription churn pipeline that separates true cancellations from plan changes, dedupes at the account level, and reports churn by plan tier. Built in SQL + dbt with automated tests.
 
 ---
@@ -12,36 +14,39 @@ cd saas-churn-plan-change-analysis
 docker compose up -d
 ```
 
-That's it. Docker will:
-- Spin up a Postgres 15 database on `localhost:5432`
-- Auto-create all tables
-- Seed 500 accounts, 530 subscriptions (including 30 plan-change pairs)
-- Create the `v_subscriptions_clean` view
+Docker spins up Postgres 15 + pgAdmin, creates all tables, and seeds 500 accounts with realistic churn patterns including plan-change pairs.
 
-**pgAdmin** (browser UI) available at [http://localhost:5050](http://localhost:5050)  
-Login: `admin@churn.local` / `admin` — the database is pre-registered, no config needed.
+**pgAdmin** at [http://localhost:5050](http://localhost:5050) — `admin@churn.local` / `admin`
 
-**Connection details**
 ```
-host:     localhost
-port:     5432
-database: churn_analytics
-user:     churn_user
-password: churn_pass
+host: localhost  port: 5432
+db:   churn_analytics
+user: churn_user  password: churn_pass
 ```
-
-To stop: `docker compose down`  
-To reset data: `docker compose down -v && docker compose up -d`
 
 ---
 
-## Background
+## Common commands
 
-The billing system records a plan upgrade as two events: a cancellation on the old plan, then a new subscription starting at the exact same timestamp. Naive churn queries count that cancellation — so every upgrade inflates the churn rate.
+```bash
+make up        # start DB + pgAdmin
+make run       # dbt run
+make test      # dbt test
+make validate  # run 99_validation_checks.sql
+make docs      # generate + serve dbt docs
+make reset     # wipe data and reseed
+make psql      # open psql shell
+```
 
-This pipeline detects plan changes via timestamp match and excludes them. It also dedupes by `account_id` so multi-seat accounts count once, and strips test/demo accounts from all outputs.
+---
 
-In this dataset, **37.5% of cancelled rows were plan changes**, not true churn.
+## The Problem
+
+The billing system records a plan upgrade as two events: a cancellation on the old plan, then a new subscription starting at the exact same timestamp. A naive churn query counts that cancellation — so every upgrade inflates the churn rate.
+
+This pipeline detects plan changes via exact timestamp match and excludes them. It also counts by `account_id` so multi-seat accounts don't inflate the count, and strips test/demo accounts from all outputs.
+
+**In this dataset: 37.5% of cancelled rows were plan changes, not true churn.**
 
 ---
 
@@ -49,7 +54,7 @@ In this dataset, **37.5% of cancelled rows were plan changes**, not true churn.
 
 | Model | Description | Window |
 |---|---|---|
-| `mart_monthly_churn` | Monthly churn rate trend | Rolling 12 months |
+| `mart_monthly_churn` | Monthly churn rate + 3-mo rolling avg | Rolling 12 months |
 | `mart_churn_by_plan` | Churn by plan tier + billing cycle | Rolling 6 months |
 | `mart_first_vs_rechurn` | First-time vs. returning churners | Rolling 12 months |
 | `mart_subscription_overlaps` | Overlapping subscriptions (data quality) | All time |
@@ -109,29 +114,25 @@ Assumptions and edge cases: [`docs/assumptions_and_traps.md`](docs/assumptions_a
 ```
 saas-churn-plan-change-analysis/
 ├── docker-compose.yml              # One command to spin up Postgres + pgAdmin
+├── Makefile                        # make up / run / test / reset / docs
+├── .github/workflows/dbt_ci.yml   # CI: runs dbt run + dbt test on every push
 ├── docker/
 │   ├── init/
 │   │   ├── 01_schema.sql           # Tables + indexes (auto-runs on first start)
 │   │   └── 02_seed_data.sql        # Synthetic data + v_subscriptions_clean view
-│   └── pgadmin_servers.json        # pgAdmin auto-registers the DB
-├── sql/                            # Standalone SQL — runs against any Postgres
+│   └── pgadmin_servers.json
+├── sql/                            # Standalone SQL
 │   ├── 00_setup.sql
-│   ├── 01_clean_base.sql
-│   ├── 02_task1_monthly_churn.sql
-│   ├── 03_task2_churn_by_plan.sql
-│   ├── 04_task3_first_vs_rechurn.sql
-│   ├── 05_task4_overlaps.sql
+│   ├── 01–05_*.sql
 │   └── 99_validation_checks.sql
 ├── dbt/
-│   ├── models/
-│   │   ├── staging/
-│   │   └── marts/
-│   ├── tests/
-│   ├── macros/
+│   ├── models/staging/             # stg_accounts, stg_subscriptions, stg_plans
+│   ├── models/marts/               # 4 mart tables
+│   ├── tests/                      # 3 custom data tests
 │   ├── schema.yml
 │   └── profiles.yml.example        # Pre-filled with Docker credentials
 ├── notebooks/
-│   └── churn_analysis.ipynb        # 4 charts, runs on seeded data
+│   └── churn_analysis.ipynb        # 4 charts, live DB connection via psycopg2
 ├── docs/
 │   ├── metric_definitions.md
 │   ├── assumptions_and_traps.md
@@ -142,22 +143,22 @@ saas-churn-plan-change-analysis/
 
 ---
 
-## Running the full pipeline
-
-**After `docker compose up -d`:**
+## Running dbt
 
 ```bash
-# Option A — plain SQL
-psql postgresql://churn_user:churn_pass@localhost:5432/churn_analytics \
-  -f sql/02_task1_monthly_churn.sql
-
-# Option B — dbt
+# profiles.yml is pre-filled with Docker credentials — just copy it
 cp dbt/profiles.yml.example ~/.dbt/profiles.yml
 cd dbt
 dbt run
 dbt test
 dbt docs generate && dbt docs serve
 ```
+
+---
+
+## Tech Stack
+
+PostgreSQL 15 · dbt Core 1.7 · Docker Compose · Python 3.11 · GitHub Actions
 
 ---
 

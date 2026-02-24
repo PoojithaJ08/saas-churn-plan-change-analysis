@@ -1,0 +1,76 @@
+name: dbt CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dbt-test:
+    name: Run dbt models and tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB:       churn_analytics
+          POSTGRES_USER:     churn_user
+          POSTGRES_PASSWORD: churn_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install dbt-postgres
+
+      - name: Seed database
+        env:
+          PGPASSWORD: churn_pass
+        run: |
+          psql -h localhost -U churn_user -d churn_analytics -f docker/init/01_schema.sql
+          psql -h localhost -U churn_user -d churn_analytics -f docker/init/02_seed_data.sql
+
+      - name: Set up dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cat <<EOF > ~/.dbt/profiles.yml
+          saas_churn:
+            target: ci
+            outputs:
+              ci:
+                type: postgres
+                host: localhost
+                port: 5432
+                user: churn_user
+                password: churn_pass
+                dbname: churn_analytics
+                schema: public
+                threads: 4
+          EOF
+
+      - name: dbt debug
+        working-directory: dbt
+        run: dbt debug
+
+      - name: dbt run
+        working-directory: dbt
+        run: dbt run
+
+      - name: dbt test
+        working-directory: dbt
+        run: dbt test
