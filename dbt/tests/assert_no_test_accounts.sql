@@ -6,7 +6,7 @@
 SELECT
     a.account_id,
     a.company_name
-FROM {{ source('raw', 'accounts') }} a
+FROM {{ source('public', 'accounts') }} a
 WHERE (
     a.company_name ILIKE '%test%'
     OR a.company_name ILIKE '%demo%'

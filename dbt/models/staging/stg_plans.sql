@@ -2,7 +2,7 @@
 -- Staging model: plan reference data (no filtering needed)
 
 WITH source AS (
-    SELECT * FROM {{ source('raw', 'plans') }}
+    SELECT * FROM {{ source('public', 'plans') }}
 )
 
 SELECT

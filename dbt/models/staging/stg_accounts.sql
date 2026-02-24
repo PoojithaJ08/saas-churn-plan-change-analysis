@@ -3,7 +3,7 @@
 -- Materialized as VIEW (no storage cost, always fresh)
 
 WITH source AS (
-    SELECT * FROM {{ source('raw', 'accounts') }}
+    SELECT * FROM {{ source('public', 'accounts') }}
 ),
 
 cleaned AS (

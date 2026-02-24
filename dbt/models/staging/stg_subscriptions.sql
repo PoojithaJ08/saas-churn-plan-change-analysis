@@ -8,7 +8,7 @@
 --   meaning this row should NOT count as true churn.
 
 WITH source AS (
-    SELECT * FROM {{ source('raw', 'subscriptions') }}
+    SELECT * FROM {{ source('public', 'subscriptions') }}
 ),
 
 clean_accounts AS (
