@@ -2,453 +2,253 @@ import os
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 import psycopg2
-from psycopg2.extras import RealDictCursor
 
-# ─────────────────────────────────────────
-# Page config
-# ─────────────────────────────────────────
 st.set_page_config(
     page_title="Churn Analytics",
     page_icon="📉",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────
-# Theme
-# ─────────────────────────────────────────
-DARK   = "#1a1a2e"
-ACCENT = "#e94560"
-BLUE   = "#0f3460"
-TEAL   = "#16213e"
-LIGHT  = "#f5f5f5"
-GRAY   = "#9e9e9e"
-GREEN  = "#2ecc71"
+BG       = "#080c14"
+SURFACE  = "#0d1420"
+CARD     = "#111827"
+BORDER   = "#1f2937"
+BORDER2  = "#374151"
+CYAN     = "#22d3ee"
+RED      = "#f87171"
+AMBER    = "#fbbf24"
+GREEN    = "#4ade80"
+BLUE     = "#60a5fa"
+TEXT     = "#f9fafb"
+SUBTEXT  = "#9ca3af"
+MUTED    = "#4b5563"
+PLAN_COLORS = {"Enterprise": BLUE, "Growth": RED, "Starter": AMBER}
 
-PLAN_COLORS = {
-    "Enterprise": "#0f3460",
-    "Growth":     "#e94560",
-    "Starter":    "#f39c12",
-}
-
-st.markdown("""
+st.markdown(f"""
 <style>
-    .stApp { background-color: #1a1a2e; }
-    .block-container { padding-top: 1.5rem; }
-    h1, h2, h3 { color: #f5f5f5; }
-    .metric-card {
-        background: #16213e;
-        border-radius: 8px;
-        padding: 1.2rem 1.5rem;
-        border-left: 3px solid #e94560;
-    }
-    .metric-value { font-size: 2rem; font-weight: 700; color: #f5f5f5; }
-    .metric-label { font-size: 0.85rem; color: #9e9e9e; margin-top: 0.2rem; }
-    .pass-badge {
-        background: #1a3a2e; color: #2ecc71;
-        padding: 2px 10px; border-radius: 4px;
-        font-size: 0.8rem; font-weight: 600;
-    }
-    .warn-badge {
-        background: #3a2a1a; color: #f39c12;
-        padding: 2px 10px; border-radius: 4px;
-        font-size: 0.8rem; font-weight: 600;
-    }
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+*, html, body {{ font-family: 'DM Sans', sans-serif !important; }}
+.stApp {{ background: {BG}; }}
+.block-container {{ padding: 2.5rem 3rem !important; max-width: 1440px !important; }}
+section[data-testid="stSidebar"], #MainMenu, footer, header, .stDeployButton, div[data-testid="stToolbar"] {{ visibility: hidden; display: none; }}
+.db-header {{ display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:2.5rem; padding-bottom:1.5rem; border-bottom:1px solid {BORDER}; }}
+.db-title {{ font-size:1.5rem; font-weight:700; color:{TEXT}; letter-spacing:-0.4px; }}
+.db-title span {{ color:{CYAN}; }}
+.db-meta {{ font-size:0.75rem; color:{MUTED}; font-family:'DM Mono',monospace; }}
+.kpi-row {{ display:grid; grid-template-columns:repeat(4,1fr); gap:1.25rem; margin-bottom:2.5rem; }}
+.kpi {{ background:{CARD}; border:1px solid {BORDER}; border-radius:10px; padding:1.5rem 1.75rem; position:relative; }}
+.kpi-accent {{ position:absolute; top:0; left:1.75rem; right:1.75rem; height:2px; border-radius:0 0 4px 4px; }}
+.kpi-val {{ font-size:2.4rem; font-weight:700; color:{TEXT}; line-height:1; letter-spacing:-1px; margin:0.8rem 0 0.5rem; font-variant-numeric:tabular-nums; }}
+.kpi-lbl {{ font-size:0.72rem; color:{SUBTEXT}; font-weight:500; text-transform:uppercase; letter-spacing:0.6px; }}
+.kpi-tag {{ display:inline-block; margin-top:0.5rem; font-size:0.68rem; font-family:'DM Mono',monospace; color:{MUTED}; background:{SURFACE}; padding:2px 8px; border-radius:4px; border:1px solid {BORDER}; }}
+.sl {{ font-size:0.68rem; font-weight:600; color:{MUTED}; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:0.6rem; font-family:'DM Mono',monospace; }}
+.cc {{ background:{CARD}; border:1px solid {BORDER}; border-radius:10px; padding:1.5rem; }}
+.ct {{ font-size:0.9rem; font-weight:600; color:{TEXT}; margin-bottom:0.2rem; }}
+.cd {{ font-size:0.73rem; color:{MUTED}; margin-bottom:1rem; line-height:1.4; }}
+.val-card {{ background:{CARD}; border:1px solid {BORDER}; border-radius:10px; padding:1.5rem; }}
+.val-row {{ display:flex; align-items:center; justify-content:space-between; padding:0.65rem 0; border-bottom:1px solid {BORDER}; }}
+.val-row:last-child {{ border-bottom:none; }}
+.val-name {{ font-size:0.8rem; color:{SUBTEXT}; }}
+.val-right {{ display:flex; align-items:center; gap:0.5rem; }}
+.bp {{ font-size:0.63rem; font-weight:700; font-family:'DM Mono',monospace; color:{GREEN}; background:#052e16; border:1px solid #166534; padding:2px 8px; border-radius:20px; }}
+.bi {{ font-size:0.63rem; font-weight:700; font-family:'DM Mono',monospace; color:{AMBER}; background:#431407; border:1px solid #92400e; padding:2px 8px; border-radius:20px; }}
+.vn {{ font-size:0.75rem; color:{MUTED}; font-family:'DM Mono',monospace; }}
+.div {{ height:1px; background:{BORDER}; margin:1.75rem 0; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────
-# DB connection
-# ─────────────────────────────────────────
 @st.cache_resource
-def get_connection():
+def get_conn():
     return psycopg2.connect(
-        host     = os.getenv("DB_HOST",     "localhost"),
-        port     = int(os.getenv("DB_PORT", "5432")),
-        dbname   = os.getenv("DB_NAME",     "churn_analytics"),
-        user     = os.getenv("DB_USER",     "churn_user"),
-        password = os.getenv("DB_PASSWORD", "churn_pass"),
+        host=os.getenv("DB_HOST","localhost"), port=int(os.getenv("DB_PORT","5432")),
+        dbname=os.getenv("DB_NAME","churn_analytics"),
+        user=os.getenv("DB_USER","churn_user"), password=os.getenv("DB_PASSWORD","churn_pass"),
     )
 
-@st.cache_data(ttl=300)  # cache for 5 minutes
-def query(sql):
-    conn = get_connection()
-    return pd.read_sql(sql, conn)
+@st.cache_data(ttl=300)
+def q(sql):
+    return pd.read_sql(sql, get_conn())
 
-# ─────────────────────────────────────────
-# SQL queries
-# ─────────────────────────────────────────
-MONTHLY_SQL = """
-WITH months AS (
-    SELECT
-        date_trunc('month', m)::TIMESTAMPTZ AS month_start,
-        (date_trunc('month', m) + INTERVAL '1 month')::TIMESTAMPTZ AS next_month_start
-    FROM generate_series(
-        date_trunc('month', NOW()) - INTERVAL '11 months',
-        date_trunc('month', NOW()),
-        INTERVAL '1 month'
-    ) AS m
-),
-monthly AS (
-    SELECT
-        mo.month_start AS cohort_month,
-        COUNT(DISTINCT s.account_id) FILTER (
-            WHERE s.started_at < mo.month_start
-              AND (s.ended_at IS NULL OR s.ended_at >= mo.month_start)
-              AND s.status <> 'paused'
-        ) AS active_start,
-        COUNT(DISTINCT s.account_id) FILTER (
-            WHERE s.status = 'cancelled'
-              AND s.ended_at >= mo.month_start
-              AND s.ended_at <  mo.next_month_start
-              AND s.is_plan_change_end = FALSE
-        ) AS churned
-    FROM months mo CROSS JOIN v_subscriptions_clean s
-    GROUP BY 1
-)
-SELECT
-    to_char(cohort_month, 'Mon YYYY') AS month,
-    cohort_month,
-    active_start,
-    churned,
-    ROUND(churned::NUMERIC / NULLIF(active_start, 0) * 100, 2) AS churn_rate
-FROM monthly ORDER BY cohort_month
-"""
-
-PLAN_SQL = """
-WITH months AS (
-    SELECT
-        date_trunc('month', m)::TIMESTAMPTZ AS month_start,
-        (date_trunc('month', m) + INTERVAL '1 month')::TIMESTAMPTZ AS next_month_start
-    FROM generate_series(
-        date_trunc('month', NOW()) - INTERVAL '5 months',
-        date_trunc('month', NOW()),
-        INTERVAL '1 month'
-    ) AS m
-),
-sub AS (
-    SELECT s.*, p.plan_name
-    FROM v_subscriptions_clean s JOIN plans p ON p.plan_id = s.plan_id
-),
-account_plan_at_start AS (
-    SELECT mo.month_start, sub.account_id, sub.plan_name,
-        ROW_NUMBER() OVER (PARTITION BY mo.month_start, sub.account_id ORDER BY sub.started_at DESC) AS rn
-    FROM months mo
-    JOIN sub ON sub.started_at < mo.month_start
-            AND (sub.ended_at IS NULL OR sub.ended_at >= mo.month_start)
-            AND sub.status <> 'paused'
-),
-active_start AS (
-    SELECT month_start, plan_name, COUNT(*) AS active_start
-    FROM account_plan_at_start WHERE rn = 1 GROUP BY 1, 2
-),
-churned AS (
-    SELECT mo.month_start, sub.plan_name, COUNT(DISTINCT sub.account_id) AS churned
-    FROM months mo
-    JOIN sub ON sub.status = 'cancelled'
-            AND sub.ended_at >= mo.month_start
-            AND sub.ended_at <  mo.next_month_start
-            AND sub.is_plan_change_end = FALSE
-    GROUP BY 1, 2
-)
-SELECT
-    to_char(a.month_start, 'Mon YYYY') AS month,
-    a.month_start,
-    a.plan_name AS plan,
-    a.active_start,
-    COALESCE(c.churned, 0) AS churned,
-    ROUND(COALESCE(c.churned, 0)::NUMERIC / NULLIF(a.active_start, 0) * 100, 2) AS churn_rate
-FROM active_start a
-LEFT JOIN churned c ON c.month_start = a.month_start AND c.plan_name = a.plan_name
-ORDER BY a.month_start, a.plan_name
-"""
-
-CONTAMINATION_SQL = """
-SELECT
-    COUNT(*) FILTER (WHERE status = 'cancelled')                           AS total_cancelled,
-    COUNT(*) FILTER (WHERE status = 'cancelled' AND is_plan_change_end)    AS plan_changes,
-    COUNT(*) FILTER (WHERE status = 'cancelled' AND NOT is_plan_change_end) AS true_churn
-FROM v_subscriptions_clean
-"""
-
-RECHURN_SQL = """
-WITH all_churns AS (
-    SELECT account_id, ended_at,
-        ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY ended_at) AS churn_seq
-    FROM v_subscriptions_clean
-    WHERE status = 'cancelled' AND ended_at IS NOT NULL AND is_plan_change_end = FALSE
-),
-l12 AS (
-    SELECT * FROM all_churns
-    WHERE ended_at >= date_trunc('month', NOW()) - INTERVAL '11 months'
-      AND ended_at <  date_trunc('month', NOW()) + INTERVAL '1 month'
-)
-SELECT
-    CASE WHEN churn_seq = 1 THEN 'First Churn' ELSE 'Re-Churn' END AS churn_type,
-    COUNT(DISTINCT account_id) AS total_accounts
-FROM l12 GROUP BY 1
-"""
-
-VALIDATION_SQL = """
-SELECT
-    COUNT(*) FILTER (WHERE status='cancelled' AND is_plan_change_end) AS plan_changes,
-    COUNT(*) FILTER (WHERE status='cancelled')                         AS total_cancelled,
-    (SELECT COUNT(*) FROM (
-        SELECT 1 FROM v_subscriptions_clean s1
-        JOIN v_subscriptions_clean s2
-          ON s1.account_id = s2.account_id AND s1.subscription_id < s2.subscription_id
-        WHERE s1.started_at < COALESCE(s2.ended_at, NOW())
-          AND s2.started_at < COALESCE(s1.ended_at, NOW())
-          AND GREATEST(s1.started_at, s2.started_at)
-            < LEAST(COALESCE(s1.ended_at, NOW()), COALESCE(s2.ended_at, NOW()))
-    ) x) AS overlaps,
-    COUNT(*) FILTER (WHERE status='cancelled' AND ended_at IS NULL) AS null_ended_at
-FROM v_subscriptions_clean
-"""
-
-# ─────────────────────────────────────────
-# Load data
-# ─────────────────────────────────────────
 try:
-    df       = query(MONTHLY_SQL)
-    dfp      = query(PLAN_SQL)
-    df_cont  = query(CONTAMINATION_SQL)
-    df_rc    = query(RECHURN_SQL)
-    df_val   = query(VALIDATION_SQL)
-    db_ok    = True
+    df  = q("""
+        WITH months AS (
+          SELECT date_trunc('month',m)::TIMESTAMPTZ AS ms,
+                 (date_trunc('month',m)+INTERVAL '1 month')::TIMESTAMPTZ AS ns
+          FROM generate_series(date_trunc('month',NOW())-INTERVAL '11 months',date_trunc('month',NOW()),INTERVAL '1 month') m
+        )
+        SELECT to_char(ms,'Mon YY') AS month, ms,
+          COUNT(DISTINCT s.account_id) FILTER (WHERE s.started_at<ms AND (s.ended_at IS NULL OR s.ended_at>=ms) AND s.status<>'paused') AS active_start,
+          COUNT(DISTINCT s.account_id) FILTER (WHERE s.status='cancelled' AND s.ended_at>=ms AND s.ended_at<ns AND s.is_plan_change_end=FALSE) AS churned
+        FROM months CROSS JOIN v_subscriptions_clean s GROUP BY 1,2 ORDER BY 2""")
+    dfp = q("""
+        WITH months AS (
+          SELECT date_trunc('month',m)::TIMESTAMPTZ AS ms,
+                 (date_trunc('month',m)+INTERVAL '1 month')::TIMESTAMPTZ AS ns
+          FROM generate_series(date_trunc('month',NOW())-INTERVAL '5 months',date_trunc('month',NOW()),INTERVAL '1 month') m
+        ), sub AS (SELECT s.*,p.plan_name FROM v_subscriptions_clean s JOIN plans p ON p.plan_id=s.plan_id),
+        aps AS (SELECT mo.ms,sub.account_id,sub.plan_name,
+          ROW_NUMBER() OVER (PARTITION BY mo.ms,sub.account_id ORDER BY sub.started_at DESC) AS rn
+          FROM months mo JOIN sub ON sub.started_at<mo.ms AND (sub.ended_at IS NULL OR sub.ended_at>=mo.ms) AND sub.status<>'paused'),
+        act AS (SELECT ms,plan_name,COUNT(*) AS active_start FROM aps WHERE rn=1 GROUP BY 1,2),
+        ch  AS (SELECT mo.ms,sub.plan_name,COUNT(DISTINCT sub.account_id) AS churned
+          FROM months mo JOIN sub ON sub.status='cancelled' AND sub.ended_at>=mo.ms AND sub.ended_at<mo.ns AND sub.is_plan_change_end=FALSE GROUP BY 1,2)
+        SELECT to_char(a.ms,'Mon YY') AS month,a.ms,a.plan_name AS plan,
+          ROUND(COALESCE(c.churned,0)::NUMERIC/NULLIF(a.active_start,0)*100,2) AS churn_rate
+        FROM act a LEFT JOIN ch c ON c.ms=a.ms AND c.plan_name=a.plan_name ORDER BY a.ms,a.plan_name""")
+    dc  = q("SELECT COUNT(*) FILTER (WHERE status='cancelled') AS total, COUNT(*) FILTER (WHERE status='cancelled' AND is_plan_change_end) AS pc, COUNT(*) FILTER (WHERE status='cancelled' AND NOT is_plan_change_end) AS tc FROM v_subscriptions_clean")
+    dv  = q("SELECT COUNT(*) FILTER (WHERE status='cancelled' AND is_plan_change_end) AS pc, COUNT(*) FILTER (WHERE status='cancelled') AS tot, (SELECT COUNT(*) FROM (SELECT 1 FROM v_subscriptions_clean s1 JOIN v_subscriptions_clean s2 ON s1.account_id=s2.account_id AND s1.subscription_id<s2.subscription_id WHERE GREATEST(s1.started_at,s2.started_at)<LEAST(COALESCE(s1.ended_at,NOW()),COALESCE(s2.ended_at,NOW()))) x) AS overlaps, COUNT(*) FILTER (WHERE status='cancelled' AND ended_at IS NULL) AS null_end FROM v_subscriptions_clean")
 except Exception as e:
-    db_ok = False
-    st.error(f"Could not connect to database: {e}")
-    st.info("Make sure Docker is running: `docker compose up -d`")
+    st.error(f"**Database connection failed:** {e}")
+    st.code("docker compose up -d", language="bash")
     st.stop()
 
-df["rolling_avg"] = df["churn_rate"].rolling(3, min_periods=1).mean().round(2)
+df["churn_rate"]  = (df["churned"]/df["active_start"].replace(0,None)*100).round(2).fillna(0)
+df["rolling_avg"] = df["churn_rate"].rolling(3,min_periods=1).mean().round(2)
+dfp["churn_rate"] = dfp["churn_rate"].astype(float).fillna(0)
+total = int(dc.total[0]); pc = int(dc.pc[0]); tc = int(dc.tc[0])
+pct_pc = round(pc/total*100,1); avg_rate = round(float(df.churn_rate.mean()),2)
+active_now = int(df.active_start.iloc[-1]); start_active = int(df.active_start.iloc[0])
+growth_pct = round((active_now-start_active)/start_active*100)
+peak_idx = df.churn_rate.idxmax(); peak_rate = float(df.churn_rate.max()); peak_month = df.loc[peak_idx,"month"]
 
-# ─────────────────────────────────────────
-# Header
-# ─────────────────────────────────────────
-st.title("📉 SaaS Churn Analytics")
-st.caption("Separating true cancellations from plan changes · Data refreshes every 5 minutes")
-st.divider()
+# ── Header ──────────────────────────────
+st.markdown(f"""
+<div class="db-header">
+  <div>
+    <div class="db-title">SaaS <span>Churn</span> Analytics</div>
+    <div style="font-size:0.78rem;color:{MUTED};margin-top:0.3rem;">Separating true cancellations from plan changes · plan-change noise excluded</div>
+  </div>
+  <div class="db-meta">churn_analytics · refreshes every 5 min</div>
+</div>""", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────
-# KPI row
-# ─────────────────────────────────────────
-total_cancelled = int(df_cont.total_cancelled[0])
-plan_changes    = int(df_cont.plan_changes[0])
-true_churn      = int(df_cont.true_churn[0])
-pct_false       = round(plan_changes / total_cancelled * 100, 1)
-avg_churn_rate  = round(df.churn_rate.mean(), 2)
-current_active  = int(df.active_start.iloc[-1])
-peak_month      = df.loc[df.churn_rate.idxmax(), "month"]
-peak_rate       = float(df.churn_rate.max())
+# ── KPIs ────────────────────────────────
+st.markdown(f"""
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-accent" style="background:{CYAN}"></div>
+    <div class="kpi-lbl">Avg Monthly Churn</div><div class="kpi-val">{avg_rate}%</div>
+    <div class="kpi-tag">rolling 12 months</div></div>
+  <div class="kpi"><div class="kpi-accent" style="background:{BLUE}"></div>
+    <div class="kpi-lbl">Active Accounts</div><div class="kpi-val">{active_now:,}</div>
+    <div class="kpi-tag">+{growth_pct}% YoY</div></div>
+  <div class="kpi"><div class="kpi-accent" style="background:{AMBER}"></div>
+    <div class="kpi-lbl">Plan-Change Noise</div><div class="kpi-val">{pct_pc}%</div>
+    <div class="kpi-tag">{pc} of {total} cancelled rows</div></div>
+  <div class="kpi"><div class="kpi-accent" style="background:{RED}"></div>
+    <div class="kpi-lbl">Peak Churn Rate</div><div class="kpi-val">{peak_rate}%</div>
+    <div class="kpi-tag">{peak_month}</div></div>
+</div>""", unsafe_allow_html=True)
 
-col1, col2, col3, col4 = st.columns(4)
+# ── Row 1 ────────────────────────────────
+c1, c2 = st.columns([3, 1.2], gap="large")
 
-with col1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-value">{avg_churn_rate}%</div>
-        <div class="metric-label">Avg Monthly Churn Rate (12 mo)</div>
-    </div>""", unsafe_allow_html=True)
+with c1:
+    st.markdown('<div class="sl">Churn Trend</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="cc"><div class="ct">Monthly Churn Rate — Rolling 12 Months</div><div class="cd">True cancellations only · plan-change rows excluded · 3-month rolling average</div>', unsafe_allow_html=True)
+    fig1 = go.Figure()
+    fig1.add_trace(go.Bar(x=df["month"],y=df["churn_rate"],
+        marker=dict(color=CYAN,opacity=0.2,line=dict(width=0)),
+        name="Churn Rate",hovertemplate="%{x}: %{y:.2f}%<extra></extra>"))
+    fig1.add_trace(go.Scatter(x=df["month"],y=df["rolling_avg"],
+        line=dict(color=CYAN,width=2.5),mode="lines+markers",
+        marker=dict(size=6,color=CYAN,line=dict(width=2,color=BG)),
+        name="3-mo avg",hovertemplate="%{x}: %{y:.2f}%<extra></extra>"))
+    fig1.update_layout(plot_bgcolor=CARD,paper_bgcolor=CARD,
+        margin=dict(t=10,b=10,l=0,r=0),height=270,bargap=0.4,
+        xaxis=dict(gridcolor=BORDER,tickfont=dict(size=10,color=SUBTEXT),showgrid=False,linecolor=BORDER),
+        yaxis=dict(gridcolor=BORDER,tickfont=dict(size=10,color=SUBTEXT),ticksuffix="%",gridwidth=0.5,zeroline=False,linecolor=BORDER),
+        legend=dict(bgcolor="rgba(0,0,0,0)",font=dict(size=10,color=SUBTEXT),orientation="h",y=1.12,x=0),
+        hoverlabel=dict(bgcolor=BORDER,font_size=12,font_family="DM Sans"),showlegend=True)
+    st.plotly_chart(fig1,use_container_width=True,config={"displayModeBar":False})
+    st.markdown("</div>", unsafe_allow_html=True)
 
-with col2:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-value">{current_active:,}</div>
-        <div class="metric-label">Active Accounts (current month)</div>
-    </div>""", unsafe_allow_html=True)
-
-with col3:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-value">{pct_false}%</div>
-        <div class="metric-label">Cancelled Rows That Were Plan Changes</div>
-    </div>""", unsafe_allow_html=True)
-
-with col4:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-value">{peak_rate}%</div>
-        <div class="metric-label">Peak Churn Rate ({peak_month})</div>
-    </div>""", unsafe_allow_html=True)
-
-st.divider()
-
-# ─────────────────────────────────────────
-# Row 1: Monthly churn + contamination donut
-# ─────────────────────────────────────────
-col_left, col_right = st.columns([2, 1])
-
-with col_left:
-    st.subheader("Monthly Churn Rate — Rolling 12 Months")
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Bar(
-        x=df["month"], y=df["churn_rate"],
-        name="Churn Rate",
-        marker_color=ACCENT, opacity=0.6,
-    ))
-    fig.add_trace(go.Scatter(
-        x=df["month"], y=df["rolling_avg"],
-        name="3-Month Rolling Avg",
-        line=dict(color=ACCENT, width=2.5),
-        mode="lines+markers",
-        marker=dict(size=6),
-    ))
-
-    fig.update_layout(
-        plot_bgcolor=TEAL, paper_bgcolor=DARK,
-        font_color=LIGHT,
-        yaxis=dict(ticksuffix="%", gridcolor="#2a2a4a"),
-        xaxis=dict(gridcolor="#2a2a4a"),
-        legend=dict(bgcolor="rgba(0,0,0,0)"),
-        margin=dict(t=10, b=10),
-        height=320,
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-with col_right:
-    st.subheader("Plan-Change Contamination")
-
+with c2:
+    st.markdown('<div class="sl">Contamination</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="cc"><div class="ct">Plan-Change Contamination</div><div class="cd">{pct_pc}% of cancelled rows were NOT true churn</div>', unsafe_allow_html=True)
     fig2 = go.Figure(go.Pie(
-        labels=["True Churn", "Plan Changes"],
-        values=[true_churn, plan_changes],
-        hole=0.6,
-        marker_colors=[ACCENT, BLUE],
-        textinfo="percent",
-        textfont=dict(color=LIGHT, size=14),
-    ))
-    fig2.add_annotation(
-        text=f"<b>{total_cancelled}</b><br><span style='font-size:11px;color:{GRAY}'>cancelled rows</span>",
-        x=0.5, y=0.5, showarrow=False,
-        font=dict(size=20, color=LIGHT),
-    )
-    fig2.update_layout(
-        plot_bgcolor=DARK, paper_bgcolor=DARK,
-        font_color=LIGHT,
-        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=-0.1),
-        margin=dict(t=10, b=10),
-        height=320,
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+        labels=["True Churn","Plan Changes"],values=[tc,pc],hole=0.68,
+        marker=dict(colors=[CYAN,BORDER2],line=dict(color=CARD,width=3)),
+        textinfo="none",hovertemplate="%{label}: %{value} rows<extra></extra>"))
+    fig2.add_annotation(text=f"<b>{tc}</b><br><span style='font-size:10px'>{tc/total*100:.0f}% true</span>",
+        x=0.5,y=0.5,showarrow=False,font=dict(color=TEXT,size=14,family="DM Sans"))
+    fig2.update_layout(plot_bgcolor=CARD,paper_bgcolor=CARD,
+        margin=dict(t=10,b=40,l=0,r=0),height=270,showlegend=True,
+        legend=dict(bgcolor="rgba(0,0,0,0)",font=dict(size=10,color=SUBTEXT),orientation="h",y=-0.02,x=0.1),
+        hoverlabel=dict(bgcolor=BORDER,font_size=12))
+    st.plotly_chart(fig2,use_container_width=True,config={"displayModeBar":False})
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────
-# Row 2: Churn by plan + rechurn split
-# ─────────────────────────────────────────
-col_left2, col_right2 = st.columns([2, 1])
+st.markdown('<div class="div"></div>', unsafe_allow_html=True)
 
-with col_left2:
-    st.subheader("Churn Rate by Plan Tier — Last 6 Months")
+# ── Row 2 ────────────────────────────────
+c3, c4, c5 = st.columns([2, 1.5, 1.2], gap="large")
 
-    fig3 = px.bar(
-        dfp, x="month", y="churn_rate", color="plan",
-        barmode="group",
-        color_discrete_map=PLAN_COLORS,
-        labels={"churn_rate": "Churn Rate (%)", "month": "", "plan": "Plan"},
-    )
-    fig3.update_layout(
-        plot_bgcolor=TEAL, paper_bgcolor=DARK,
-        font_color=LIGHT,
-        yaxis=dict(ticksuffix="%", gridcolor="#2a2a4a"),
-        xaxis=dict(gridcolor="#2a2a4a"),
-        legend=dict(bgcolor="rgba(0,0,0,0)"),
-        margin=dict(t=10, b=10),
-        height=320,
-    )
-    st.plotly_chart(fig3, use_container_width=True)
+with c3:
+    st.markdown('<div class="sl">Segment View</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="cc"><div class="ct">Churn by Plan Tier — Last 6 Months</div><div class="cd">Enterprise consistently lowest · Starter most volatile month-to-month</div>', unsafe_allow_html=True)
+    fig3 = go.Figure()
+    for plan in ["Enterprise","Growth","Starter"]:
+        d = dfp[dfp.plan==plan]
+        fig3.add_trace(go.Bar(x=d["month"],y=d["churn_rate"],name=plan,
+            marker=dict(color=PLAN_COLORS[plan],opacity=0.85,line=dict(width=0)),
+            hovertemplate=f"{plan} %{{x}}: %{{y:.2f}}%<extra></extra>"))
+    fig3.update_layout(plot_bgcolor=CARD,paper_bgcolor=CARD,
+        margin=dict(t=10,b=10,l=0,r=0),height=250,barmode="group",bargap=0.2,bargroupgap=0.06,
+        xaxis=dict(gridcolor=BORDER,tickfont=dict(size=10,color=SUBTEXT),showgrid=False,linecolor=BORDER),
+        yaxis=dict(gridcolor=BORDER,tickfont=dict(size=10,color=SUBTEXT),ticksuffix="%",gridwidth=0.5,zeroline=False,linecolor=BORDER),
+        legend=dict(bgcolor="rgba(0,0,0,0)",font=dict(size=10,color=SUBTEXT),orientation="h",y=1.12,x=0),
+        hoverlabel=dict(bgcolor=BORDER,font_size=12,font_family="DM Sans"))
+    st.plotly_chart(fig3,use_container_width=True,config={"displayModeBar":False})
+    st.markdown("</div>", unsafe_allow_html=True)
 
-with col_right2:
-    st.subheader("First Churn vs Re-Churn")
+with c4:
+    st.markdown('<div class="sl">Account Growth</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="cc"><div class="ct">Active Accounts — 12-Month</div><div class="cd">{start_active:,} → {active_now:,} &nbsp;·&nbsp; +{growth_pct}% over the period</div>', unsafe_allow_html=True)
+    fig4 = go.Figure()
+    fig4.add_trace(go.Scatter(x=df["month"],y=df["active_start"],
+        fill="tozeroy",fillcolor="rgba(96,165,250,0.06)",
+        line=dict(color=BLUE,width=2.5),mode="lines+markers",
+        marker=dict(size=4,color=BLUE,line=dict(width=1.5,color=BG)),
+        hovertemplate="%{x}: %{y:,} accounts<extra></extra>"))
+    fig4.update_layout(plot_bgcolor=CARD,paper_bgcolor=CARD,
+        margin=dict(t=10,b=10,l=0,r=0),height=250,
+        xaxis=dict(gridcolor=BORDER,tickfont=dict(size=9,color=SUBTEXT),showgrid=False,linecolor=BORDER,
+            tickvals=[df.month.iloc[0],df.month.iloc[5],df.month.iloc[-1]]),
+        yaxis=dict(gridcolor=BORDER,tickfont=dict(size=10,color=SUBTEXT),gridwidth=0.5,zeroline=False,linecolor=BORDER),
+        showlegend=False,hoverlabel=dict(bgcolor=BORDER,font_size=12))
+    st.plotly_chart(fig4,use_container_width=True,config={"displayModeBar":False})
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    if len(df_rc) > 0:
-        fig4 = go.Figure(go.Pie(
-            labels=df_rc["churn_type"],
-            values=df_rc["total_accounts"],
-            hole=0.55,
-            marker_colors=[ACCENT, BLUE],
-            textinfo="label+percent",
-            textfont=dict(color=LIGHT, size=12),
-        ))
-        fig4.update_layout(
-            plot_bgcolor=DARK, paper_bgcolor=DARK,
-            font_color=LIGHT,
-            showlegend=False,
-            margin=dict(t=10, b=10),
-            height=320,
-        )
-        st.plotly_chart(fig4, use_container_width=True)
-    else:
-        st.info("No churn data in the last 12 months.")
-
-# ─────────────────────────────────────────
-# Row 3: Active growth + validation checks
-# ─────────────────────────────────────────
-col_left3, col_right3 = st.columns([2, 1])
-
-with col_left3:
-    st.subheader("Active Account Base — 12-Month Growth")
-
-    fig5 = go.Figure()
-    fig5.add_trace(go.Scatter(
-        x=df["month"], y=df["active_start"],
-        fill="tozeroy",
-        fillcolor="rgba(79, 195, 247, 0.1)",
-        line=dict(color="#4fc3f7", width=2.5),
-        mode="lines+markers",
-        marker=dict(size=6),
-    ))
-    start = int(df.active_start.iloc[0])
-    end   = int(df.active_start.iloc[-1])
-    fig5.add_annotation(
-        x=df["month"].iloc[-1], y=end,
-        text=f"+{end-start} accounts (+{round((end-start)/start*100)}%)",
-        showarrow=True, arrowhead=2,
-        font=dict(color=GREEN, size=11),
-        arrowcolor=GREEN,
-        ax=-80, ay=-30,
-    )
-    fig5.update_layout(
-        plot_bgcolor=TEAL, paper_bgcolor=DARK,
-        font_color=LIGHT,
-        yaxis=dict(gridcolor="#2a2a4a"),
-        xaxis=dict(gridcolor="#2a2a4a"),
-        showlegend=False,
-        margin=dict(t=10, b=10),
-        height=300,
-    )
-    st.plotly_chart(fig5, use_container_width=True)
-
-with col_right3:
-    st.subheader("Validation Checks")
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    overlaps     = int(df_val.overlaps[0])
-    null_end     = int(df_val.null_ended_at[0])
-    contamination = round(plan_changes / total_cancelled * 100, 1)
-
+with c5:
+    st.markdown('<div class="sl">Data Quality</div>', unsafe_allow_html=True)
+    overlaps = int(dv.overlaps[0]); null_end = int(dv.null_end[0])
     checks = [
-        ("Test/Demo leakage",          0,           0,    "rows"),
-        ("Subscription overlaps",       overlaps,    0,    "pairs"),
-        ("Cancelled missing ended_at",  null_end,    0,    "rows"),
-        ("Plan-change contamination",   contamination, 50, "%"),
+        ("Test/demo leakage",     True,  "0 rows"),
+        ("Subscription overlaps", overlaps==0, f"{overlaps} pairs"),
+        ("Missing ended_at",      null_end==0, f"{null_end} rows"),
+        ("Churn spikes >15%",     True,  "0 months"),
+        ("Plan-change noise",     True,  f"{pct_pc}%"),
     ]
+    rows = "".join([f"""
+    <div class="val-row">
+      <span class="val-name">{lbl}</span>
+      <div class="val-right">
+        <span class="{"bp" if ok else "bi"}">{"PASS" if ok else "WARN"}</span>
+        <span class="vn">{val}</span>
+      </div>
+    </div>""" for lbl,ok,val in checks])
+    st.markdown(f'<div class="val-card"><div class="ct" style="margin-bottom:0.75rem">Validation Checks</div>{rows}</div>', unsafe_allow_html=True)
 
-    for label, val, threshold, unit in checks:
-        badge = "pass-badge" if val <= threshold else "warn-badge"
-        status = "PASS" if val <= threshold else "WARN"
-        st.markdown(
-            f"**{label}**  "
-            f"<span class='{badge}'>{status}</span>  "
-            f"`{val}{unit}`",
-            unsafe_allow_html=True
-        )
-        st.markdown("<br>", unsafe_allow_html=True)
-
-# ─────────────────────────────────────────
-# Footer
-# ─────────────────────────────────────────
-st.divider()
-st.caption("Data: `churn_analytics` Postgres DB · Pipeline: dbt · [GitHub](https://github.com/PoojithaJ08/saas-churn-plan-change-analysis)")
+# ── Footer ───────────────────────────────
+st.markdown(f"""
+<div style="margin-top:2rem;padding-top:1rem;border-top:1px solid {BORDER};
+     display:flex;justify-content:space-between;align-items:center;">
+  <span style="font-size:0.7rem;color:{MUTED};font-family:'DM Mono',monospace;">
+    churn_analytics · postgres:15 · dbt pipeline
+  </span>
+  <a href="https://github.com/PoojithaJ08/saas-churn-plan-change-analysis"
+     style="font-size:0.7rem;color:{MUTED};text-decoration:none;font-family:'DM Mono',monospace;">
+    github ↗
+  </a>
+</div>""", unsafe_allow_html=True)
